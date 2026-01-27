@@ -13,6 +13,7 @@ const token = ref(null);
 // UI State
 const selectedGameIndex = ref(0);
 const allGames = ref([]);
+const publicGames = ref([]);
 const photos = ref([]);
 const currentStep = ref(0);
 const guesses = ref([]);
@@ -82,6 +83,7 @@ async function loadQuizzes() {
   error.value = '';
   
   try {
+    // Load user's own quizzes
     const response = await fetch(`${API_URL}/api/quizzes`, {
       headers: { 'Authorization': `Bearer ${token.value}` }
     });
@@ -99,19 +101,43 @@ async function loadQuizzes() {
     
     const data = await response.json();
     allGames.value = data.quizzes || [];
-    console.log('Loaded quizzes:', allGames.value.length);
+    console.log('Loaded user quizzes:', allGames.value.length);
+    
+    // Load all public quizzes
+    try {
+      const publicResponse = await fetch(`${API_URL}/api/quizzes/all/public`, {
+        headers: { 'Authorization': `Bearer ${token.value}` }
+      });
+      
+      if (publicResponse.ok) {
+        const publicData = await publicResponse.json();
+        publicGames.value = publicData.quizzes || [];
+        console.log('Loaded public quizzes:', publicGames.value.length);
+      }
+    } catch (err) {
+      console.error('Error loading public quizzes:', err);
+    }
     
     // Check if a quiz was shared
     const sharedQuizId = sessionStorage.getItem('sharedQuizId');
     if (sharedQuizId) {
-      const quizIndex = allGames.value.findIndex(q => q.id === parseInt(sharedQuizId));
+      // First check own quizzes
+      let quizIndex = allGames.value.findIndex(q => q.id === parseInt(sharedQuizId));
       if (quizIndex !== -1) {
         console.log('Loading shared quiz:', sharedQuizId);
         sessionStorage.removeItem('sharedQuizId');
         await selectGame(quizIndex);
       } else {
-        console.log('Shared quiz not found, showing home');
-        showHome.value = true;
+        // Then check public quizzes
+        quizIndex = publicGames.value.findIndex(q => q.id === parseInt(sharedQuizId));
+        if (quizIndex !== -1) {
+          console.log('Loading shared public quiz:', sharedQuizId);
+          sessionStorage.removeItem('sharedQuizId');
+          await selectGamePublic(quizIndex);
+        } else {
+          console.log('Shared quiz not found, showing home');
+          showHome.value = true;
+        }
       }
     } else {
       // Show home page with quizzes
@@ -121,6 +147,40 @@ async function loadQuizzes() {
   } catch (err) {
     console.error('Error loading quizzes:', err);
     error.value = 'Failed to load quizzes';
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+// Load photos for a specific public quiz
+async function selectGamePublic(idx) {
+  const quiz = publicGames.value[idx];
+  if (!quiz || !token.value) return;
+  
+  selectedGameIndex.value = idx;
+  isLoading.value = true;
+  
+  try {
+    const response = await fetch(`${API_URL}/api/quizzes/${quiz.id}/photos`, {
+      headers: { 'Authorization': `Bearer ${token.value}` }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to load quiz photos');
+    }
+    
+    const data = await response.json();
+    photos.value = data.photos || [];
+    
+    // Reset game state
+    currentStep.value = 0;
+    guesses.value = [];
+    score.value = 0;
+    showResult.value = false;
+    showHome.value = false;
+  } catch (err) {
+    console.error('Error loading quiz:', err);
+    error.value = 'Failed to load quiz';
   } finally {
     isLoading.value = false;
   }
@@ -296,7 +356,7 @@ function getScoreMessage() {
   </div>
   <main v-else>
     <div class="header">
-      <h1>WhereTaken - Location Game</h1>
+      <h1>OUCPRI</h1>
       <div class="header-right">
         <button @click="toggleDarkMode" class="dark-mode-toggle">
           {{ isDarkMode ? '☀️' : '🌙' }}
@@ -341,6 +401,30 @@ function getScoreMessage() {
       <button v-if="isDev" @click="showAdmin = true" class="create-btn">
         ➕ Create New Quiz
       </button>
+    </div>
+
+    <!-- PUBLIC QUIZZES SECTION -->
+    <div v-if="showHome && !showAdmin" class="public-quizzes-section">
+      <h2>All Quizzes</h2>
+      <div v-if="isLoading" class="loading">Loading quizzes...</div>
+      <div v-else-if="publicGames.length === 0" class="no-quizzes">
+        <p>No public quizzes available yet.</p>
+      </div>
+      <div v-else class="quizzes-grid">
+        <div v-for="quiz in publicGames" :key="quiz.id" class="quiz-card public-quiz-card">
+          <h3>{{ quiz.name }}</h3>
+          <p class="quiz-author">by @{{ quiz.username }}</p>
+          <p class="quiz-date">{{ formatDate(quiz.created_at) }}</p>
+          <div class="quiz-actions">
+            <button @click="selectGamePublic(publicGames.findIndex(q => q.id === quiz.id))" class="play-btn">
+              ▶️ Play
+            </button>
+            <button @click="shareQuiz(quiz.id)" class="share-btn" title="Copy share link">
+              🔗 Share
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ADMIN PANEL -->
@@ -910,6 +994,27 @@ h1 {
   color: var(--color-text-secondary);
   font-size: 0.85rem;
   margin: 0;
+}
+
+.quiz-author {
+  color: #66c0ff;
+  font-size: 0.9rem;
+  margin: 0;
+  font-weight: 500;
+}
+
+.public-quizzes-section {
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 2px solid var(--color-border);
+}
+
+.public-quiz-card {
+  opacity: 0.95;
+}
+
+.public-quiz-card:hover {
+  opacity: 1;
 }
 
 .quiz-actions {

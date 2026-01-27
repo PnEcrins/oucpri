@@ -1,4 +1,4 @@
-# WhereTaken - Location Guessing Game
+# OUCPRI
 
 Une application web interactive pour créer et jouer à des jeux de localisation. Devinez les lieux à partir de photos et testez vos connaissances géographiques !
 

@@ -121,7 +121,7 @@ const handleSubmit = async (e) => {
 <template>
   <div class="login-container">
     <div class="login-card">
-      <h1>WhereTaken</h1>
+      <h1>OUCPRI</h1>
       <p class="subtitle">Location Guessing Game</p>
 
       <form @submit="handleSubmit">

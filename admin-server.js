@@ -307,6 +307,32 @@ app.get('/api/quizzes', authenticateToken, (req, res) => {
 });
 
 /**
+ * GET /api/quizzes/all/public
+ * Get all public quizzes from all users with creator info
+ * Headers: Authorization: Bearer <token>
+ */
+app.get('/api/quizzes/all/public', authenticateToken, (req, res) => {
+  try {
+    db.all(
+      `SELECT q.id, q.name, q.created_at, u.username, u.id as user_id 
+       FROM quizzes q 
+       JOIN users u ON q.user_id = u.id 
+       ORDER BY q.created_at DESC`,
+      (err, quizzes) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
+        res.json({ success: true, quizzes: quizzes || [] });
+      }
+    );
+  } catch (error) {
+    console.error('Get all quizzes error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /api/quizzes/:id/photos
  * Get all photos for a specific quiz
  * Headers: Authorization: Bearer <token>
