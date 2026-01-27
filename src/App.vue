@@ -4,20 +4,33 @@ import GameStep from "./components/GameStep.vue";
 import AdminPanel from "./components/AdminPanel.vue";
 
 // Charger les données JSON (import statique pour build statique)
-import photosDefault from "../photos.json";
 
+import photosAllGames from "../photos.json";
+
+const allGames = Array.isArray(photosAllGames) ? photosAllGames : [];
+const selectedGameIndex = ref(0);
+const photos = ref(
+  allGames.length > 0 && Array.isArray(allGames[0]) ? allGames[0] : [],
+);
 const currentStep = ref(0);
 const guesses = ref([]);
 const score = ref(0);
 const showResult = ref(false);
 const showAdmin = ref(false);
-const photos = ref(photosDefault);
 const isDev = import.meta.env.DEV;
 
-onMounted(() => {
-  // Rien à faire ici, le jeu utilise photos.json par défaut
-  // Les images sont chargées depuis le dossier /images avec les chemins relatifs
-});
+function selectGame(idx) {
+  console.log('Selecting game:', idx);
+  console.log('All games:', allGames);
+  console.log('Game data:', allGames[idx]);
+  selectedGameIndex.value = idx;
+  photos.value = Array.isArray(allGames[idx]) ? allGames[idx] : [];
+  console.log('Photos updated:', photos.value);
+  currentStep.value = 0;
+  guesses.value = [];
+  score.value = 0;
+  showResult.value = false;
+}
 
 function handleGuess(latlng) {
   guesses.value[currentStep.value] = latlng;
@@ -30,7 +43,11 @@ function validateGuess() {
 
 function onGameSaved() {
   showAdmin.value = false;
-  // Le jeu se rechargera automatiquement quand l'utilisateur remplacera photos.json
+  // Reload all games from static import (user must refresh page to see new games in prod)
+  // In dev, hot reload may work
+  // For now, just reset to first game
+  selectedGameIndex.value = 0;
+  photos.value = allGames.length > 0 ? allGames[0] : [];
   currentStep.value = 0;
   guesses.value = [];
   score.value = 0;
@@ -40,7 +57,7 @@ function onGameSaved() {
 function nextStep() {
   // Calcul du score pour l'étape courante
   const guess = guesses.value[currentStep.value];
-  const answer = photos[currentStep.value].location;
+  const answer = photos.value[currentStep.value].location;
   if (guess) {
     const dist = haversine(guess.lat, guess.lng, answer[0], answer[1]);
     // Score max 200, 0 si > 2000km, linéaire sinon
@@ -78,7 +95,7 @@ function getPhotoScore(i) {
 
 function getPhotoDistance(i) {
   const guess = guesses.value[i];
-  if (!guess) return 'N/A';
+  if (!guess) return "N/A";
   const answer = photos.value[i].location;
   const dist = haversine(guess.lat, guess.lng, answer[0], answer[1]);
   return dist.toFixed(0);
@@ -86,82 +103,144 @@ function getPhotoDistance(i) {
 
 function getScoreMessage() {
   const percentage = (score.value / (photos.value.length * 200)) * 100;
-  if (percentage >= 90) return '🏆 Excellent ! Vous êtes un expert !';
-  if (percentage >= 70) return '👏 Très bien ! Impressionnant !';
-  if (percentage >= 50) return '😊 Pas mal ! Continuez à vous entraîner';
-  return '📚 À refaire ! Vous allez progresser';
+  if (percentage >= 90) return "🏆 Excellent ! Vous êtes un expert !";
+  if (percentage >= 70) return "👏 Très bien ! Impressionnant !";
+  if (percentage >= 50) return "😊 Pas mal ! Continuez à vous entraîner";
+  return "📚 À refaire ! Vous allez progresser";
 }
 </script>
 
 <template>
   <main>
     <div class="header">
-      <h1>WhereTaken - Jeu de localisation</h1>
+      <h1>WhereTaken - Location Game</h1>
       <button v-if="isDev" @click="showAdmin = !showAdmin" class="admin-toggle">
-        {{ showAdmin ? '← Retour au jeu' : '⚙️ Admin' }}
+        {{ showAdmin ? "← Back to game" : "⚙️ Admin" }}
       </button>
     </div>
-    
-    <AdminPanel v-if="showAdmin" @close="showAdmin = false" @gameSaved="onGameSaved" />
-    
-    <div v-else-if="currentStep < photos.length">
+    <div v-if="!showAdmin && allGames.length > 1" class="game-selector">
+      <label for="game-select">Choose a game:</label>
+      <select
+        id="game-select"
+        :value="selectedGameIndex"
+        @change="(e) => selectGame(Number(e.target.value))"
+      >
+        <option v-for="(g, idx) in allGames" :key="idx" :value="idx">
+          Game {{ idx + 1 }}
+        </option>
+      </select>
+    </div>
+    <AdminPanel
+      v-if="showAdmin"
+      @close="showAdmin = false"
+      @gameSaved="onGameSaved"
+    />
+    <div
+      v-else-if="
+        photos &&
+        Array.isArray(photos) &&
+        photos.length > 0 &&
+        currentStep < photos.length
+      "
+    >
       <div class="game-layout">
-        <GameStep 
-          :photo="photos[currentStep]" 
+        <GameStep
+          :photo="photos[currentStep]"
           :onGuess="handleGuess"
           :showLine="showResult"
           :userGuess="guesses[currentStep]"
           :correctAnswer="photos[currentStep].location"
         />
         <div v-if="!showResult" class="controls">
-          <button @click="validateGuess" :disabled="!guesses[currentStep]" class="validate-btn">
+          <button
+            @click="validateGuess"
+            :disabled="!guesses[currentStep]"
+            class="validate-btn"
+          >
             Valider et voir le résultat
           </button>
           <p v-if="guesses[currentStep]">
-            Vous avez choisi : {{ guesses[currentStep].lat.toFixed(4) }}, {{ guesses[currentStep].lng.toFixed(4) }}
+            Vous avez choisi : {{ guesses[currentStep].lat.toFixed(4) }},
+            {{ guesses[currentStep].lng.toFixed(4) }}
           </p>
-          <p>Score actuel : {{ score }}</p>
+          <p>Current score: {{ score }}</p>
           <p>Photo {{ currentStep + 1 }} / {{ photos.length }}</p>
         </div>
       </div>
       <div v-if="showResult" class="result-panel">
         <div class="result-content">
-          <h3>Photo {{ currentStep + 1 }} - Résultat</h3>
+          <h3>Photo {{ currentStep + 1 }} - Result</h3>
           <p class="score-gained">+{{ getPhotoScore(currentStep) }} points</p>
           <div v-if="guesses[currentStep]" class="result-details">
-            <p><span class="label">Distance :</span> {{ getPhotoDistance(currentStep) }} km</p>
-            <p><span class="label">Votre choix :</span> {{ guesses[currentStep].lat.toFixed(4) }}, {{ guesses[currentStep].lng.toFixed(4) }}</p>
-            <p><span class="label">Solution :</span> {{ photos[currentStep].location[0].toFixed(4) }}, {{ photos[currentStep].location[1].toFixed(4) }}</p>
+            <p>
+              <span class="label">Distance:</span>
+              {{ getPhotoDistance(currentStep) }} km
+            </p>
+            <p>
+              <span class="label">Your guess:</span>
+              {{ guesses[currentStep].lat.toFixed(4) }},
+              {{ guesses[currentStep].lng.toFixed(4) }}
+            </p>
+            <p>
+              <span class="label">Solution:</span>
+              {{ photos[currentStep].location[0].toFixed(4) }},
+              {{ photos[currentStep].location[1].toFixed(4) }}
+            </p>
           </div>
           <div v-else class="result-details">
-            <p>Vous n'avez pas répondu à cette question.</p>
+            <p>You did not answer this question.</p>
           </div>
-          <button @click="nextStep" class="next-btn">Suivant</button>
+          <button @click="nextStep" class="next-btn">Next</button>
         </div>
       </div>
     </div>
-    <div v-else class="score-summary">
-      <h2>🎉 Partie terminée !</h2>
+    <div
+      v-else-if="
+        photos &&
+        Array.isArray(photos) &&
+        photos.length > 0
+      "
+      class="score-summary"
+    >
+      <h2>🎉 Game finished!</h2>
       <div class="score-card">
-        <p class="final-score">{{ score }} / {{ photos.value.length * 200 }} points</p>
-        <p class="score-percentage">{{ ((score / (photos.value.length * 200)) * 100).toFixed(0) }}%</p>
+        <p class="final-score">
+          {{ score }} /
+          {{ photos && photos.length ? photos.length * 200 : 0 }} points
+        </p>
+        <p class="score-percentage">
+          {{
+            photos && photos.length
+              ? ((score / (photos.length * 200)) * 100).toFixed(0)
+              : 0
+          }}%
+        </p>
         <p class="score-message">{{ getScoreMessage() }}</p>
       </div>
       <div class="results-list">
-        <h3>Détails par photo</h3>
+        <h3>Details per photo</h3>
         <div v-for="(photo, i) in photos" :key="i" class="result-item">
           <div class="photo-header">
             <strong>Photo {{ i + 1 }}</strong>
             <span class="photo-score">{{ getPhotoScore(i) }} pts</span>
           </div>
           <div v-if="guesses[i]" class="photo-details">
-            <p><span class="label">Votre choix :</span> {{ guesses[i].lat.toFixed(4) }}, {{ guesses[i].lng.toFixed(4) }}</p>
-            <p><span class="label">Distance :</span> {{ getPhotoDistance(i) }} km</p>
+            <p>
+              <span class="label">Your guess:</span>
+              {{ guesses[i].lat.toFixed(4) }}, {{ guesses[i].lng.toFixed(4) }}
+            </p>
+            <p>
+              <span class="label">Distance:</span> {{ getPhotoDistance(i) }} km
+            </p>
           </div>
           <div v-else class="photo-details">
-            <p><span class="label">Votre choix :</span> <em>Pas de réponse</em></p>
+            <p><span class="label">Your guess:</span> <em>No answer</em></p>
           </div>
-          <p class="solution"><span class="label">Solution :</span> {{ photo.location[0].toFixed(4) }}, {{ photo.location[1].toFixed(4) }}</p>
+          <p class="solution">
+            <span class="label">Solution:</span>
+            {{ photo.location[0].toFixed(4) }},
+            {{ photo.location[1].toFixed(4) }}
+          </p>
         </div>
       </div>
       <button
@@ -172,8 +251,12 @@ function getScoreMessage() {
           score = 0;
         "
       >
-        Rejouer
+        Play again
       </button>
+    </div>
+    <div v-else class="no-games">
+      <h2>No games available</h2>
+      <p>Please add games using the admin panel (⚙️ Admin button above).</p>
     </div>
   </main>
 </template>
@@ -331,5 +414,20 @@ button:disabled {
   .result-panel {
     max-height: 60vh;
   }
+}
+.no-games {
+  text-align: center;
+  padding: 3rem 1rem;
+  background: #f9f9f9;
+  border-radius: 8px;
+  margin-top: 2rem;
+}
+.no-games h2 {
+  color: #333;
+  margin-bottom: 1rem;
+}
+.no-games p {
+  color: #666;
+  font-size: 1rem;
 }
 </style>

@@ -1,34 +1,42 @@
 <template>
   <div class="admin-container">
-    <h2>Créer un nouveau jeu</h2>
-    
+    <h2>Create a new game</h2>
     <div class="instructions">
-      <h4>📋 Instructions :</h4>
+      <h4>📋 Instructions:</h4>
       <ol>
-        <li>Lancez le serveur admin : <code>npm run admin-server</code> (dans un autre terminal)</li>
-        <li>Uploader 5 images dans cette interface</li>
-        <li>Cliquez sur la carte pour sélectionner les coordonnées de chaque image</li>
-        <li>Cliquez sur "Sauvegarder le jeu"</li>
-        <li>Les images seront stockées dans <code>/images</code> et <code>photos.json</code> sera mis à jour automatiquement</li>
-        <li>Lancez <code>npm run build</code></li>
-        <li>Poussez le dossier <code>dist/</code> sur GitHub Pages</li>
+        <li>
+          Start the admin server: <code>npm run admin-server</code> (in another
+          terminal)
+        </li>
+        <li>Upload 5 images in this interface</li>
+        <li>Click on the map to select coordinates for each image</li>
+        <li>Click "Save game" to add a new game (series of 5 photos)</li>
+        <li>
+          Images will be stored in <code>/images</code> and
+          <code>photos.json</code> will be updated automatically
+        </li>
+        <li>Run <code>npm run build</code></li>
+        <li>Push the <code>dist/</code> folder to GitHub Pages</li>
       </ol>
     </div>
-    
     <div class="admin-form">
-      <h3>Uploader 5 images</h3>
-      
-      <div v-for="(photo, index) in formPhotos" :key="index" class="photo-form-group">
+      <h3>Upload 5 images</h3>
+
+      <div
+        v-for="(photo, index) in formPhotos"
+        :key="index"
+        class="photo-form-group"
+      >
         <div class="photo-header">
           <h4>Image {{ index + 1 }}</h4>
           <span v-if="photo.file" class="file-name">{{ photo.file.name }}</span>
         </div>
-        
+
         <div class="form-row">
           <div class="form-group">
             <label>Choisir une image</label>
-            <input 
-              type="file" 
+            <input
+              type="file"
               accept="image/*"
               @change="(e) => onFileSelected(index, e)"
               class="file-input"
@@ -38,20 +46,19 @@
             </div>
           </div>
         </div>
-        
-        <AdminMap 
+
+        <AdminMap
           v-if="photo.file"
           :currentLat="photo.lat"
           :currentLng="photo.lng"
           @update:coordinates="(coords) => onCoordinatesSelected(index, coords)"
         />
       </div>
-      
+
       <div class="form-actions">
-        <button @click="saveGame" class="save-btn">Sauvegarder le jeu</button>
-        <button @click="$emit('close')" class="cancel-btn">Annuler</button>
+        <button @click="saveGame" class="save-btn">Save game</button>
+        <button @click="$emit('close')" class="cancel-btn">Cancel</button>
       </div>
-      
       <div v-if="message" :class="['message', messageType]">
         {{ message }}
       </div>
@@ -60,87 +67,89 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import AdminMap from './AdminMap.vue'
+import { ref, reactive } from "vue";
+import AdminMap from "./AdminMap.vue";
 
-const emit = defineEmits(['close', 'gameSaved'])
+const emit = defineEmits(["close", "gameSaved"]);
 
 const formPhotos = reactive([
-  { file: null, preview: '', lat: null, lng: null },
-  { file: null, preview: '', lat: null, lng: null },
-  { file: null, preview: '', lat: null, lng: null },
-  { file: null, preview: '', lat: null, lng: null },
-  { file: null, preview: '', lat: null, lng: null }
-])
+  { file: null, preview: "", lat: null, lng: null },
+  { file: null, preview: "", lat: null, lng: null },
+  { file: null, preview: "", lat: null, lng: null },
+  { file: null, preview: "", lat: null, lng: null },
+  { file: null, preview: "", lat: null, lng: null },
+]);
 
-const message = ref('')
-const messageType = ref('')
+const message = ref("");
+const messageType = ref("");
 
 function onFileSelected(index, event) {
-  const file = event.target.files[0]
+  const file = event.target.files[0];
   if (file) {
-    formPhotos[index].file = file
-    const reader = new FileReader()
+    formPhotos[index].file = file;
+    const reader = new FileReader();
     reader.onload = (e) => {
-      formPhotos[index].preview = e.target.result
-    }
-    reader.readAsDataURL(file)
+      formPhotos[index].preview = e.target.result;
+    };
+    reader.readAsDataURL(file);
   }
 }
 
 function onCoordinatesSelected(index, coords) {
-  formPhotos[index].lat = coords.lat
-  formPhotos[index].lng = coords.lng
+  formPhotos[index].lat = coords.lat;
+  formPhotos[index].lng = coords.lng;
 }
 
 function saveGame() {
   // Valide que toutes les images et coordonnées sont remplies
-  const allValid = formPhotos.every(p => p.file && p.lat !== null && p.lng !== null)
-  
+  const allValid = formPhotos.every(
+    (p) => p.file && p.lat !== null && p.lng !== null,
+  );
+
   if (!allValid) {
-    message.value = 'Veuillez remplir tous les champs (5 images + coordonnées)'
-    messageType.value = 'error'
-    setTimeout(() => message.value = '', 3000)
-    return
+    message.value = "Please fill all fields (5 images + coordinates)";
+    messageType.value = "error";
+    setTimeout(() => (message.value = ""), 3000);
+    return;
   }
-  
-  // Crée le JSON du jeu sans noms de fichiers (le serveur les génère automatiquement)
+
+  // Create the game JSON (the server will generate image filenames)
   const gameData = formPhotos.map((p, i) => ({
-    image: '', // Sera généré par le serveur
-    location: [p.lat, p.lng]
-  }))
-  
-  // Prépare le formulaire pour l'upload
-  const formData = new FormData()
+    image: "", // Will be set by the server
+    location: [p.lat, p.lng],
+  }));
+
+  // Prepare the form for upload
+  const formData = new FormData();
   formPhotos.forEach((p, i) => {
     if (p.file) {
-      formData.append('images', p.file)
+      formData.append("images", p.file);
     }
+  });
+  formData.append("gameData", JSON.stringify({ gameData }));
+
+  // Send to server
+  fetch("http://localhost:3001/api/save-game", {
+    method: "POST",
+    body: formData,
   })
-  formData.append('gameData', JSON.stringify(gameData))
-  
-  // Envoie au serveur
-  fetch('http://localhost:3001/api/save-game', {
-    method: 'POST',
-    body: formData
-  })
-    .then(res => res.json())
-    .then(data => {
+    .then((res) => res.json())
+    .then((data) => {
       if (data.success) {
-        message.value = `✅ Jeu sauvegardé ! ${data.photosWritten} photos écrites dans /images et photos.json mis à jour`
-        messageType.value = 'success'
-        setTimeout(() => emit('gameSaved'), 2000)
+        message.value = `✅ Game saved! ${data.photosWritten} photos written to /images and photos.json updated.`;
+        messageType.value = "success";
+        setTimeout(() => emit("gameSaved"), 2000);
       } else {
-        message.value = `❌ Erreur : ${data.error}`
-        messageType.value = 'error'
+        message.value = `❌ Error: ${data.error}`;
+        messageType.value = "error";
       }
     })
-    .catch(err => {
-      message.value = `❌ Erreur de connexion au serveur : ${err.message}. Assurez-vous que le serveur est lancé avec "npm run admin-server"`
-      messageType.value = 'error'
-    })
-    
-  setTimeout(() => message.value = '', 5000)
+    .catch((err) => {
+      message.value = `❌ Server connection error: ${err.message}. Make sure the server is running with \"npm run admin-server\"`;
+      messageType.value = "error";
+    });
+
+  setTimeout(() => (message.value = ""), 5000);
 }
 </script>
 
@@ -161,7 +170,7 @@ h2 {
   background: white;
   padding: 2rem;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 h3 {
@@ -272,7 +281,7 @@ h3 {
 .image-preview img {
   width: 100%;
   border-radius: 6px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 .form-actions {
@@ -336,15 +345,15 @@ h3 {
   .admin-container {
     padding: 1rem;
   }
-  
+
   .admin-form {
     padding: 1rem;
   }
-  
+
   .form-row {
     flex-direction: column;
   }
-  
+
   .form-actions {
     flex-direction: column;
   }

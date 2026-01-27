@@ -60,40 +60,46 @@ watch(
   () => props.showLine,
   (newShowLine) => {
     if (!map) return;
-    
+
     if (newShowLine && props.userGuess && props.correctAnswer) {
-      console.log('Affichage de la ligne:', props.userGuess, props.correctAnswer);
-      
+      console.log(
+        "Affichage de la ligne:",
+        props.userGuess,
+        props.correctAnswer,
+      );
+
       // Nettoie les anciens marqueurs/ligne
       if (correctMarker) map.removeLayer(correctMarker);
       if (line) map.removeLayer(line);
-      
+
       // Assure que le marqueur utilisateur existe
       if (!marker || marker.getLatLng().lat !== props.userGuess.lat) {
         if (marker) map.removeLayer(marker);
         marker = L.marker(props.userGuess).addTo(map);
       }
-      
+
       // Ajoute un marqueur pour la solution exacte (vert)
       correctMarker = L.marker(props.correctAnswer, {
         icon: L.icon({
-          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+          iconUrl:
+            "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png",
+          shadowUrl:
+            "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
           iconSize: [25, 41],
           iconAnchor: [12, 41],
           popupAnchor: [1, -34],
-          shadowSize: [41, 41]
-        })
+          shadowSize: [41, 41],
+        }),
       }).addTo(map);
-      
+
       // Dessine une ligne entre le pointage et la solution
       line = L.polyline([props.userGuess, props.correctAnswer], {
-        color: 'red',
+        color: "red",
         weight: 3,
         opacity: 0.8,
-        dashArray: '5, 5'
+        dashArray: "5, 5",
       }).addTo(map);
-      
+
       // Zoome sur la zone contenant les deux points
       if (marker) {
         const group = L.featureGroup([marker, correctMarker]);
@@ -110,7 +116,7 @@ watch(
         line = null;
       }
     }
-  }
+  },
 );
 
 watch(
@@ -132,7 +138,7 @@ watch(
     if (map) {
       map.setView([20, 0], 2);
       // Efface les couches sauf le fond de carte
-      map.eachLayer(l => {
+      map.eachLayer((l) => {
         if (l instanceof L.Polyline || l instanceof L.Marker) {
           map.removeLayer(l);
         }

@@ -1,7 +1,7 @@
 <template>
   <div class="game-container">
-    <ImageMap 
-      :photo="photo" 
+    <ImageMap
+      :photo="photo"
       :onGuess="onGuess"
       :showLine="showLine"
       :userGuess="userGuess"

@@ -11,8 +11,14 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3001;
 
+// CORS configuration - allow all localhost origins
+const corsOptions = {
+  origin: /^http:\/\/localhost:\d+$/,
+  credentials: true
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Configuration du stockage des fichiers avec noms sécurisés
@@ -36,13 +42,22 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Route pour sauvegarder le jeu
+// Route to save a new game (supports multiple games)
 app.post('/api/save-game', upload.array('images', 5), (req, res) => {
   try {
-    const gameData = JSON.parse(req.body.gameData);
+    const parsedData = JSON.parse(req.body.gameData);
+    const gameData = parsedData.gameData || parsedData;
     const photosPath = path.join(__dirname, 'photos.json');
-    
-    // Mappe les anciens noms aux nouveaux noms de fichiers
+    let allGames = [];
+    if (fs.existsSync(photosPath)) {
+      try {
+        allGames = JSON.parse(fs.readFileSync(photosPath, 'utf-8'));
+      } catch (e) {
+        allGames = [];
+      }
+    }
+
+    // Map original names to new safe filenames
     const updatedGameData = gameData.map((photo, index) => {
       if (req.files && req.files[index]) {
         const newFilename = req.files[index].filename;
@@ -53,18 +68,21 @@ app.post('/api/save-game', upload.array('images', 5), (req, res) => {
       }
       return photo;
     });
-    
-    // Écrit le fichier photos.json avec les nouveaux noms
-    fs.writeFileSync(photosPath, JSON.stringify(updatedGameData, null, 2));
-    
+
+    // Add the new game (array of 5 photos) to the list
+    allGames.push(updatedGameData);
+
+    // Write the updated games array to photos.json
+    fs.writeFileSync(photosPath, JSON.stringify(allGames, null, 2));
+
     res.json({
       success: true,
-      message: 'Jeu sauvegardé avec succès !',
+      message: 'Game saved successfully!',
       photosWritten: updatedGameData.length,
       files: updatedGameData.map(p => p.image)
     });
   } catch (error) {
-    console.error('Erreur lors de la sauvegarde:', error);
+    console.error('Error saving game:', error);
     res.status(500).json({
       success: false,
       error: error.message

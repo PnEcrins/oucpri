@@ -12,56 +12,56 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
+import { ref, onMounted } from "vue";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 const props = defineProps({
   currentLat: Number,
-  currentLng: Number
-})
+  currentLng: Number,
+});
 
-const emit = defineEmits(['update:coordinates'])
+const emit = defineEmits(["update:coordinates"]);
 
-const mapContainer = ref(null)
-let map = null
-let marker = null
-const selectedLatLng = ref(null)
+const mapContainer = ref(null);
+let map = null;
+let marker = null;
+const selectedLatLng = ref(null);
 
 if (props.currentLat && props.currentLng) {
-  selectedLatLng.value = { lat: props.currentLat, lng: props.currentLng }
+  selectedLatLng.value = { lat: props.currentLat, lng: props.currentLng };
 }
 
 onMounted(() => {
   // Initialise la carte centrée sur le monde
-  const defaultLat = props.currentLat || 20
-  const defaultLng = props.currentLng || 0
-  
-  map = L.map(mapContainer.value).setView([defaultLat, defaultLng], 3)
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors'
-  }).addTo(map)
-  
+  const defaultLat = props.currentLat || 20;
+  const defaultLng = props.currentLng || 0;
+
+  map = L.map(mapContainer.value).setView([defaultLat, defaultLng], 3);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap contributors",
+  }).addTo(map);
+
   // Si on a déjà des coordonnées, ajoute un marqueur
   if (props.currentLat && props.currentLng) {
-    marker = L.marker([props.currentLat, props.currentLng]).addTo(map)
+    marker = L.marker([props.currentLat, props.currentLng]).addTo(map);
   }
-  
+
   // Écoute les clics sur la carte
-  map.on('click', (e) => {
-    const { lat, lng } = e.latlng
-    selectedLatLng.value = { lat, lng }
-    
+  map.on("click", (e) => {
+    const { lat, lng } = e.latlng;
+    selectedLatLng.value = { lat, lng };
+
     // Ajoute ou déplace le marqueur
     if (marker) {
-      map.removeLayer(marker)
+      map.removeLayer(marker);
     }
-    marker = L.marker([lat, lng]).addTo(map)
-    
+    marker = L.marker([lat, lng]).addTo(map);
+
     // Émet l'événement pour mettre à jour le parent
-    emit('update:coordinates', { lat, lng })
-  })
-})
+    emit("update:coordinates", { lat, lng });
+  });
+});
 </script>
 
 <style scoped>
