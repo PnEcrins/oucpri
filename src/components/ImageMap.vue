@@ -157,26 +157,36 @@ watch(
   display: flex;
   gap: 2%;
   width: 100%;
+  max-width: 1000px;
   height: 400px;
+  margin: 0 auto;
+  justify-content: center;
 }
+
 .leaflet-image-map {
   width: 45%;
   height: 100%;
   border-radius: 8px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   overflow: hidden;
+  background: var(--color-bg-secondary);
 }
+
 .map-container {
   width: 45%;
   height: 100%;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
+  background: var(--color-bg-secondary);
 }
+
 @media (max-width: 900px) {
   .image-map-container {
     flex-direction: column;
     height: auto;
+    gap: 1rem;
   }
+
   .leaflet-image-map,
   .map-container {
     width: 100%;

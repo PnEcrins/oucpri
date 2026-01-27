@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Uploaded images
+images/
+!images/.gitkeep
+
+# Database
+*.db
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
