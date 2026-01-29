@@ -3,8 +3,6 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import cors from 'cors';
-import bcryptjs from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import sqlite3 from 'sqlite3';
 import { fileURLToPath } from 'url';
 
@@ -13,8 +11,6 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_EXPIRY = '24h';
 
 // CORS configuration - allow all localhost origins
 const corsOptions = {
@@ -65,24 +61,13 @@ db.run('PRAGMA foreign_keys = ON');
 // Initialize database schema
 function initializeDatabase() {
   db.serialize(() => {
-    // Create users table
-    db.run(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
     // Create quizzes table
     db.run(`
       CREATE TABLE IF NOT EXISTS quizzes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
         name TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        creator_name TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -113,45 +98,32 @@ function migrateExistingPhotos() {
       try {
         const photosData = JSON.parse(fs.readFileSync(photosPath, 'utf-8'));
         
-        // Create migration user
-        const migrationUser = 'migration_user';
-        const hashedPassword = bcryptjs.hashSync('changeme123', 10);
-        
-        db.run(
-          'INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)',
-          [migrationUser, hashedPassword],
-          function(err) {
-            if (err) return;
-            const userId = this.lastID;
-            
-            // Migrate each game as a quiz
-            let quizCounter = 0;
-            photosData.forEach((gamePhotos, gameIndex) => {
-              db.run(
-                'INSERT INTO quizzes (user_id, name) VALUES (?, ?)',
-                [userId, `Quiz ${gameIndex + 1}`],
-                function(err) {
-                  if (err) return;
-                  const quizId = this.lastID;
-                  
-                  // Insert photos for this quiz
-                  gamePhotos.forEach(photo => {
-                    const [lat, lon] = photo.location;
-                    db.run(
-                      'INSERT INTO photos (quiz_id, image_path, location_lat, location_lon) VALUES (?, ?, ?, ?)',
-                      [quizId, photo.image, lat, lon]
-                    );
-                  });
-                  
-                  quizCounter++;
-                  if (quizCounter === photosData.length) {
-                    console.log(`✅ Migrated ${photosData.length} quizzes from photos.json`);
-                  }
-                }
-              );
-            });
-          }
-        );
+        // Migrate each game as a quiz
+        let quizCounter = 0;
+        photosData.forEach((gamePhotos, gameIndex) => {
+          db.run(
+            'INSERT INTO quizzes (name, creator_name) VALUES (?, ?)',
+            [`Quiz ${gameIndex + 1}`, 'Anonymous'],
+            function(err) {
+              if (err) return;
+              const quizId = this.lastID;
+              
+              // Insert photos for this quiz
+              gamePhotos.forEach(photo => {
+                const [lat, lon] = photo.location;
+                db.run(
+                  'INSERT INTO photos (quiz_id, image_path, location_lat, location_lon) VALUES (?, ?, ?, ?)',
+                  [quizId, photo.image, lat, lon]
+                );
+              });
+              
+              quizCounter++;
+              if (quizCounter === photosData.length) {
+                console.log(`✅ Migrated ${photosData.length} quizzes from photos.json`);
+              }
+            }
+          );
+        });
       } catch (e) {
         console.error('⚠️  Migration error:', e.message);
       }
@@ -159,140 +131,16 @@ function migrateExistingPhotos() {
   });
 }
 
-// ===== AUTHENTICATION ROUTES =====
-
-/**
- * POST /api/auth/signup
- * Create a new user account
- * Body: { username: string, password: string }
- */
-app.post('/api/auth/signup', (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    // Validation
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password required' });
-    }
-
-    if (username.length < 3) {
-      return res.status(400).json({ error: 'Username must be at least 3 characters' });
-    }
-
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    }
-
-    if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
-      return res.status(400).json({ error: 'Username can only contain letters, numbers, underscores, and hyphens' });
-    }
-
-    // Hash password
-    const hashedPassword = bcryptjs.hashSync(password, 10);
-
-    // Insert user
-    db.run(
-      'INSERT INTO users (username, password_hash) VALUES (?, ?)',
-      [username, hashedPassword],
-      function(err) {
-        if (err) {
-          if (err.message.includes('UNIQUE')) {
-            return res.status(409).json({ error: 'Username already exists' });
-          }
-          return res.status(500).json({ error: 'Database error' });
-        }
-
-        const userId = this.lastID;
-        const token = jwt.sign({ id: userId, username }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-
-        res.status(201).json({
-          success: true,
-          token,
-          user: { id: userId, username }
-        });
-      }
-    );
-  } catch (error) {
-    console.error('Signup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * POST /api/auth/login
- * Login user and return JWT token
- * Body: { username: string, password: string }
- */
-app.post('/api/auth/login', (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password required' });
-    }
-
-    db.get(
-      'SELECT id, username, password_hash FROM users WHERE username = ?',
-      [username],
-      (err, user) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database error' });
-        }
-
-        if (!user) {
-          return res.status(401).json({ error: 'Invalid username or password' });
-        }
-
-        const isPasswordValid = bcryptjs.compareSync(password, user.password_hash);
-        if (!isPasswordValid) {
-          return res.status(401).json({ error: 'Invalid username or password' });
-        }
-
-        const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-
-        res.json({
-          success: true,
-          token,
-          user: { id: user.id, username: user.username }
-        });
-      }
-    );
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ===== MIDDLEWARE: Verify JWT Token =====
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
-    }
-    req.user = decoded;
-    next();
-  });
-};
-
 // ===== QUIZZES ROUTES =====
 
 /**
  * GET /api/quizzes
- * Get all quizzes for the authenticated user, sorted by creation date (newest first)
- * Headers: Authorization: Bearer <token>
+ * Get all quizzes, sorted by creation date (newest first)
  */
-app.get('/api/quizzes', authenticateToken, (req, res) => {
+app.get('/api/quizzes', (req, res) => {
   try {
     db.all(
-      'SELECT id, name, created_at FROM quizzes WHERE user_id = ? ORDER BY created_at DESC',
-      [req.user.id],
+      'SELECT id, name, creator_name, created_at FROM quizzes ORDER BY created_at DESC',
       (err, quizzes) => {
         if (err) {
           return res.status(500).json({ error: 'Database error' });
@@ -307,70 +155,28 @@ app.get('/api/quizzes', authenticateToken, (req, res) => {
 });
 
 /**
- * GET /api/quizzes/all/public
- * Get all public quizzes from all users with creator info
- * Headers: Authorization: Bearer <token>
- */
-app.get('/api/quizzes/all/public', authenticateToken, (req, res) => {
-  try {
-    db.all(
-      `SELECT q.id, q.name, q.created_at, u.username, u.id as user_id 
-       FROM quizzes q 
-       JOIN users u ON q.user_id = u.id 
-       ORDER BY q.created_at DESC`,
-      (err, quizzes) => {
-        if (err) {
-          console.error('Database error:', err);
-          return res.status(500).json({ error: 'Database error' });
-        }
-        res.json({ success: true, quizzes: quizzes || [] });
-      }
-    );
-  } catch (error) {
-    console.error('Get all quizzes error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
  * GET /api/quizzes/:id/photos
  * Get all photos for a specific quiz
- * Headers: Authorization: Bearer <token>
  */
-app.get('/api/quizzes/:id/photos', authenticateToken, (req, res) => {
+app.get('/api/quizzes/:id/photos', (req, res) => {
   try {
     const quizId = req.params.id;
 
-    // Verify ownership
-    db.get(
-      'SELECT user_id FROM quizzes WHERE id = ?',
+    db.all(
+      'SELECT id, image_path, location_lat, location_lon FROM photos WHERE quiz_id = ? ORDER BY id',
       [quizId],
-      (err, quiz) => {
-        if (err || !quiz) {
-          return res.status(404).json({ error: 'Quiz not found' });
+      (err, photos) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
         }
-
-        if (quiz.user_id !== req.user.id) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
-
-        db.all(
-          'SELECT id, image_path, location_lat, location_lon FROM photos WHERE quiz_id = ? ORDER BY id',
-          [quizId],
-          (err, photos) => {
-            if (err) {
-              return res.status(500).json({ error: 'Database error' });
-            }
-            res.json({
-              success: true,
-              photos: photos.map(p => ({
-                id: p.id,
-                image: p.image_path,
-                location: [p.location_lat, p.location_lon]
-              }))
-            });
-          }
-        );
+        res.json({
+          success: true,
+          photos: photos.map(p => ({
+            id: p.id,
+            image: p.image_path,
+            location: [p.location_lat, p.location_lon]
+          }))
+        });
       }
     );
   } catch (error) {
@@ -382,18 +188,22 @@ app.get('/api/quizzes/:id/photos', authenticateToken, (req, res) => {
 /**
  * POST /api/quizzes
  * Create a new quiz with 5 photos
- * Headers: Authorization: Bearer <token>
  * Body (multipart/form-data): 
  *   - images: 5 image files
  *   - quizName: quiz name
+ *   - creatorName: creator name
  *   - gameData: JSON string with location data
  */
-app.post('/api/quizzes', authenticateToken, upload.array('images', 5), (req, res) => {
+app.post('/api/quizzes', upload.array('images', 5), (req, res) => {
   try {
-    const { quizName, gameData } = req.body;
+    const { quizName, creatorName, gameData } = req.body;
 
     if (!quizName || !quizName.trim()) {
       return res.status(400).json({ error: 'Quiz name required' });
+    }
+
+    if (!creatorName || !creatorName.trim()) {
+      return res.status(400).json({ error: 'Creator name required' });
     }
 
     if (!req.files || req.files.length === 0) {
@@ -434,8 +244,8 @@ app.post('/api/quizzes', authenticateToken, upload.array('images', 5), (req, res
 
     // Create quiz
     db.run(
-      'INSERT INTO quizzes (user_id, name) VALUES (?, ?)',
-      [req.user.id, quizName.trim()],
+      'INSERT INTO quizzes (name, creator_name) VALUES (?, ?)',
+      [quizName.trim(), creatorName.trim()],
       function(err) {
         if (err) {
           console.error('Quiz creation error:', err);
@@ -481,7 +291,7 @@ app.post('/api/quizzes', authenticateToken, upload.array('images', 5), (req, res
             res.status(201).json({
               success: true,
               message: 'Quiz created successfully!',
-              quiz: { id: quizId, name: quizName }
+              quiz: { id: quizId, name: quizName, creator_name: creatorName }
             });
           })
           .catch((err) => {
@@ -496,39 +306,24 @@ app.post('/api/quizzes', authenticateToken, upload.array('images', 5), (req, res
   }
 });
 
+
 /**
  * DELETE /api/quizzes/:id
  * Delete a quiz and all its photos (cascade)
- * Headers: Authorization: Bearer <token>
  */
-app.delete('/api/quizzes/:id', authenticateToken, (req, res) => {
+app.delete('/api/quizzes/:id', (req, res) => {
   try {
     const quizId = req.params.id;
 
-    // Verify ownership
-    db.get(
-      'SELECT user_id FROM quizzes WHERE id = ?',
+    // Delete quiz (photos cascade delete due to foreign key)
+    db.run(
+      'DELETE FROM quizzes WHERE id = ?',
       [quizId],
-      (err, quiz) => {
-        if (err || !quiz) {
-          return res.status(404).json({ error: 'Quiz not found' });
+      (err) => {
+        if (err) {
+          return res.status(500).json({ error: 'Failed to delete quiz' });
         }
-
-        if (quiz.user_id !== req.user.id) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
-
-        // Delete quiz (photos cascade delete due to foreign key)
-        db.run(
-          'DELETE FROM quizzes WHERE id = ?',
-          [quizId],
-          (err) => {
-            if (err) {
-              return res.status(500).json({ error: 'Failed to delete quiz' });
-            }
-            res.json({ success: true, message: 'Quiz deleted successfully' });
-          }
-        );
+        res.json({ success: true, message: 'Quiz deleted successfully' });
       }
     );
   } catch (error) {
@@ -540,39 +335,36 @@ app.delete('/api/quizzes/:id', authenticateToken, (req, res) => {
 /**
  * PUT /api/quizzes/:id
  * Update a quiz name and/or photos
- * Headers: Authorization: Bearer <token>
  * Body (multipart/form-data): 
  *   - quizName: new quiz name (optional)
+ *   - creatorName: new creator name (optional)
  *   - gameData: JSON string with location data (optional, must have 5 items if provided)
  *   - images: new image files (optional, can be 0-5 images)
  */
-app.put('/api/quizzes/:id', authenticateToken, upload.array('images', 5), (req, res) => {
+app.put('/api/quizzes/:id', upload.array('images', 5), (req, res) => {
   try {
     const quizId = req.params.id;
-    const { quizName, gameData } = req.body;
+    const { quizName, creatorName, gameData } = req.body;
 
-    // Verify ownership
     db.get(
-      'SELECT user_id, name FROM quizzes WHERE id = ?',
+      'SELECT name, creator_name FROM quizzes WHERE id = ?',
       [quizId],
       (err, quiz) => {
         if (err || !quiz) {
           return res.status(404).json({ error: 'Quiz not found' });
         }
 
-        if (quiz.user_id !== req.user.id) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
-
-        // Update quiz name if provided
-        if (quizName && quizName.trim()) {
+        // Update quiz name/creator if provided
+        if ((quizName && quizName.trim()) || (creatorName && creatorName.trim())) {
           db.run(
-            'UPDATE quizzes SET name = ? WHERE id = ?',
-            [quizName.trim(), quizId],
+            'UPDATE quizzes SET name = ?, creator_name = ? WHERE id = ?',
+            [quizName && quizName.trim() ? quizName.trim() : quiz.name, 
+             creatorName && creatorName.trim() ? creatorName.trim() : quiz.creator_name, 
+             quizId],
             (err) => {
               if (err) {
-                console.error('Quiz name update error:', err);
-                return res.status(500).json({ error: 'Failed to update quiz name' });
+                console.error('Quiz update error:', err);
+                return res.status(500).json({ error: 'Failed to update quiz' });
               }
             }
           );
@@ -632,7 +424,7 @@ app.put('/api/quizzes/:id', authenticateToken, upload.array('images', 5), (req, 
 
               Promise.all(insertPromises)
                 .then(() => {
-                  console.log(`✅ Quiz "${quizName}" updated successfully`);
+                  console.log(`✅ Quiz updated successfully`);
                   res.json({
                     success: true,
                     message: 'Quiz updated successfully!',
@@ -661,6 +453,7 @@ app.put('/api/quizzes/:id', authenticateToken, upload.array('images', 5), (req, 
   }
 });
 
+
 // ===== HEALTH CHECK =====
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Admin server ready' });
@@ -672,6 +465,6 @@ app.listen(PORT, () => {
 ✅ Admin server running on http://localhost:${PORT}
 📸 Images saved to /images folder
 🗄️  Database: quiz.db
-🔐 JWT authentication enabled
+� No authentication required - all quizzes are public
   `);
 });

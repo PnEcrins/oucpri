@@ -2,13 +2,8 @@
 import { ref, onMounted, computed } from "vue";
 import GameStep from "./components/GameStep.vue";
 import AdminPanel from "./components/AdminPanel.vue";
-import LoginPage from "./components/LoginPage.vue";
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-// Authentication
-const user = ref(null);
-const token = ref(null);
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 // UI State
 const selectedGameIndex = ref(0);
@@ -21,9 +16,9 @@ const score = ref(0);
 const showResult = ref(false);
 const showAdmin = ref(false);
 const showHome = ref(true);
-const isDarkMode = ref(localStorage.getItem('darkMode') === 'true');
+const isDarkMode = ref(localStorage.getItem("darkMode") === "true");
 const isLoading = ref(false);
-const error = ref('');
+const error = ref("");
 const isDev = ref(true); // Always allow admin access in local dev
 
 // Computed
@@ -34,108 +29,60 @@ const currentGameId = computed(() => {
 // Initialize dark mode
 onMounted(() => {
   applyDarkMode(isDarkMode.value);
-  checkAuthentication();
-  
+  loadQuizzes();
+
   // Check for shared quiz link
   const params = new URLSearchParams(window.location.search);
-  const sharedQuizId = params.get('quiz');
-  
+  const sharedQuizId = params.get("quiz");
+
   if (sharedQuizId) {
-    console.log('Shared quiz ID:', sharedQuizId);
+    console.log("Shared quiz ID:", sharedQuizId);
     // Will be handled after quizzes load
-    sessionStorage.setItem('sharedQuizId', sharedQuizId);
+    sessionStorage.setItem("sharedQuizId", sharedQuizId);
   }
 });
 
-// Check if user is already logged in
-function checkAuthentication() {
-  const storedToken = localStorage.getItem('token');
-  const storedUser = localStorage.getItem('user');
-  
-  console.log('Checking authentication...');
-  console.log('Stored token:', storedToken ? 'exists' : 'none');
-  console.log('Stored user:', storedUser ? 'exists' : 'none');
-  
-  if (storedToken && storedUser) {
-    try {
-      token.value = storedToken;
-      user.value = JSON.parse(storedUser);
-      console.log('User restored:', user.value);
-      loadQuizzes();
-    } catch (e) {
-      console.error('Error restoring authentication:', e);
-      logout();
-    }
-  } else {
-    console.log('No stored token or user found');
-  }
-}
-
-// Load quizzes for authenticated user
+// Load quizzes
 async function loadQuizzes() {
-  if (!token.value) {
-    console.log('No token available, skipping loadQuizzes');
-    return;
-  }
-  
-  console.log('Loading quizzes with token:', token.value.substring(0, 20) + '...');
   isLoading.value = true;
-  error.value = '';
-  
+  error.value = "";
+
   try {
-    // Load user's own quizzes
-    const response = await fetch(`${API_URL}/api/quizzes`, {
-      headers: { 'Authorization': `Bearer ${token.value}` }
-    });
-    
-    console.log('Quizzes response status:', response.status);
-    
+    // Load all quizzes
+    const response = await fetch(`${API_URL}/api/quizzes`);
+
+    console.log("Quizzes response status:", response.status);
+
     if (!response.ok) {
-      if (response.status === 401) {
-        console.error('Unauthorized - token may be invalid or expired');
-        logout();
-        return;
-      }
-      throw new Error('Failed to load quizzes');
+      throw new Error("Failed to load quizzes");
     }
-    
+
     const data = await response.json();
     allGames.value = data.quizzes || [];
-    console.log('Loaded user quizzes:', allGames.value.length);
-    
-    // Load all public quizzes
-    try {
-      const publicResponse = await fetch(`${API_URL}/api/quizzes/all/public`, {
-        headers: { 'Authorization': `Bearer ${token.value}` }
-      });
-      
-      if (publicResponse.ok) {
-        const publicData = await publicResponse.json();
-        publicGames.value = publicData.quizzes || [];
-        console.log('Loaded public quizzes:', publicGames.value.length);
-      }
-    } catch (err) {
-      console.error('Error loading public quizzes:', err);
-    }
-    
+    console.log("Loaded quizzes:", allGames.value.length);
+
     // Check if a quiz was shared
-    const sharedQuizId = sessionStorage.getItem('sharedQuizId');
+    const sharedQuizId = sessionStorage.getItem("sharedQuizId");
     if (sharedQuizId) {
       // First check own quizzes
-      let quizIndex = allGames.value.findIndex(q => q.id === parseInt(sharedQuizId));
+      let quizIndex = allGames.value.findIndex(
+        (q) => q.id === parseInt(sharedQuizId),
+      );
       if (quizIndex !== -1) {
-        console.log('Loading shared quiz:', sharedQuizId);
-        sessionStorage.removeItem('sharedQuizId');
+        console.log("Loading shared quiz:", sharedQuizId);
+        sessionStorage.removeItem("sharedQuizId");
         await selectGame(quizIndex);
       } else {
         // Then check public quizzes
-        quizIndex = publicGames.value.findIndex(q => q.id === parseInt(sharedQuizId));
+        quizIndex = publicGames.value.findIndex(
+          (q) => q.id === parseInt(sharedQuizId),
+        );
         if (quizIndex !== -1) {
-          console.log('Loading shared public quiz:', sharedQuizId);
-          sessionStorage.removeItem('sharedQuizId');
+          console.log("Loading shared public quiz:", sharedQuizId);
+          sessionStorage.removeItem("sharedQuizId");
           await selectGamePublic(quizIndex);
         } else {
-          console.log('Shared quiz not found, showing home');
+          console.log("Shared quiz not found, showing home");
           showHome.value = true;
         }
       }
@@ -145,33 +92,31 @@ async function loadQuizzes() {
       showAdmin.value = false;
     }
   } catch (err) {
-    console.error('Error loading quizzes:', err);
-    error.value = 'Failed to load quizzes';
+    console.error("Error loading quizzes:", err);
+    error.value = "Failed to load quizzes";
   } finally {
     isLoading.value = false;
   }
 }
 
-// Load photos for a specific public quiz
+// Load photos for a specific quiz
 async function selectGamePublic(idx) {
-  const quiz = publicGames.value[idx];
-  if (!quiz || !token.value) return;
-  
+  const quiz = allGames.value[idx];
+  if (!quiz) return;
+
   selectedGameIndex.value = idx;
   isLoading.value = true;
-  
+
   try {
-    const response = await fetch(`${API_URL}/api/quizzes/${quiz.id}/photos`, {
-      headers: { 'Authorization': `Bearer ${token.value}` }
-    });
-    
+    const response = await fetch(`${API_URL}/api/quizzes/${quiz.id}/photos`);
+
     if (!response.ok) {
-      throw new Error('Failed to load quiz photos');
+      throw new Error("Failed to load quiz photos");
     }
-    
+
     const data = await response.json();
     photos.value = data.photos || [];
-    
+
     // Reset game state
     currentStep.value = 0;
     guesses.value = [];
@@ -179,8 +124,8 @@ async function selectGamePublic(idx) {
     showResult.value = false;
     showHome.value = false;
   } catch (err) {
-    console.error('Error loading quiz:', err);
-    error.value = 'Failed to load quiz';
+    console.error("Error loading quiz:", err);
+    error.value = "Failed to load quiz";
   } finally {
     isLoading.value = false;
   }
@@ -189,23 +134,21 @@ async function selectGamePublic(idx) {
 // Load photos for a specific quiz
 async function selectGame(idx) {
   const quiz = allGames.value[idx];
-  if (!quiz || !token.value) return;
-  
+  if (!quiz) return;
+
   selectedGameIndex.value = idx;
   isLoading.value = true;
-  
+
   try {
-    const response = await fetch(`${API_URL}/api/quizzes/${quiz.id}/photos`, {
-      headers: { 'Authorization': `Bearer ${token.value}` }
-    });
-    
+    const response = await fetch(`${API_URL}/api/quizzes/${quiz.id}/photos`);
+
     if (!response.ok) {
-      throw new Error('Failed to load quiz photos');
+      throw new Error("Failed to load quiz photos");
     }
-    
+
     const data = await response.json();
     photos.value = data.photos || [];
-    
+
     // Reset game state
     currentStep.value = 0;
     guesses.value = [];
@@ -213,31 +156,11 @@ async function selectGame(idx) {
     showResult.value = false;
     showHome.value = false;
   } catch (err) {
-    console.error('Error loading quiz:', err);
-    error.value = 'Failed to load quiz';
+    console.error("Error loading quiz:", err);
+    error.value = "Failed to load quiz";
   } finally {
     isLoading.value = false;
   }
-}
-
-// Handle login
-async function handleLogin(userInfo) {
-  user.value = userInfo;
-  token.value = userInfo.token;
-  localStorage.setItem('token', userInfo.token);
-  localStorage.setItem('user', JSON.stringify({ username: userInfo.username, id: userInfo.id }));
-  await loadQuizzes();
-}
-
-// Logout
-function logout() {
-  user.value = null;
-  token.value = null;
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  allGames.value = [];
-  photos.value = [];
-  showHome.value = true;
 }
 
 // Go back to home
@@ -250,29 +173,29 @@ function goHome() {
 function shareQuiz(quizId) {
   const shareUrl = `${window.location.origin}?quiz=${quizId}`;
   navigator.clipboard.writeText(shareUrl);
-  alert('Quiz link copied to clipboard!');
+  alert("Quiz link copied to clipboard!");
 }
 
 // Format date
 function formatDate(dateString) {
   const date = new Date(dateString);
-  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+  return date.toLocaleDateString() + " " + date.toLocaleTimeString();
 }
 
 // Dark mode toggle
 function toggleDarkMode() {
   isDarkMode.value = !isDarkMode.value;
-  localStorage.setItem('darkMode', isDarkMode.value.toString());
+  localStorage.setItem("darkMode", isDarkMode.value.toString());
   applyDarkMode(isDarkMode.value);
 }
 
 function applyDarkMode(isDark) {
   if (isDark) {
-    document.documentElement.style.colorScheme = 'dark';
-    document.body.classList.add('dark-mode');
+    document.documentElement.style.colorScheme = "dark";
+    document.body.classList.add("dark-mode");
   } else {
-    document.documentElement.style.colorScheme = 'light';
-    document.body.classList.remove('dark-mode');
+    document.documentElement.style.colorScheme = "light";
+    document.body.classList.remove("dark-mode");
   }
 }
 
@@ -345,10 +268,7 @@ function getScoreMessage() {
 </script>
 
 <template>
-  <div v-if="!user && !isLoading">
-    <LoginPage @login="handleLogin" />
-  </div>
-  <div v-else-if="isLoading" class="loading">
+  <div v-if="isLoading" class="loading">
     <p>Loading...</p>
   </div>
   <div v-else-if="error" class="error-banner">
@@ -359,13 +279,13 @@ function getScoreMessage() {
       <h1>OUCPRI</h1>
       <div class="header-right">
         <button @click="toggleDarkMode" class="dark-mode-toggle">
-          {{ isDarkMode ? '☀️' : '🌙' }}
+          {{ isDarkMode ? "☀️" : "🌙" }}
         </button>
-        <div class="user-info">
-          <span>{{ user?.username }}</span>
-          <button @click="logout" class="logout-btn">Logout</button>
-        </div>
-        <button v-if="isDev" @click="showAdmin = !showAdmin" class="admin-toggle">
+        <button
+          v-if="isDev"
+          @click="showAdmin = !showAdmin"
+          class="admin-toggle"
+        >
           {{ showAdmin ? "← Back" : "⚙️ Admin" }}
         </button>
         <button v-if="!showHome && !showAdmin" @click="goHome" class="home-btn">
@@ -389,10 +309,17 @@ function getScoreMessage() {
           <h3>{{ quiz.name }}</h3>
           <p class="quiz-date">Created: {{ formatDate(quiz.created_at) }}</p>
           <div class="quiz-actions">
-            <button @click="selectGame(allGames.findIndex(q => q.id === quiz.id))" class="play-btn">
+            <button
+              @click="selectGame(allGames.findIndex((q) => q.id === quiz.id))"
+              class="play-btn"
+            >
               ▶️ Play
             </button>
-            <button @click="shareQuiz(quiz.id)" class="share-btn" title="Copy share link">
+            <button
+              @click="shareQuiz(quiz.id)"
+              class="share-btn"
+              title="Copy share link"
+            >
               🔗 Share
             </button>
           </div>
@@ -403,34 +330,9 @@ function getScoreMessage() {
       </button>
     </div>
 
-    <!-- PUBLIC QUIZZES SECTION -->
-    <div v-if="showHome && !showAdmin" class="public-quizzes-section">
-      <h2>All Quizzes</h2>
-      <div v-if="isLoading" class="loading">Loading quizzes...</div>
-      <div v-else-if="publicGames.length === 0" class="no-quizzes">
-        <p>No public quizzes available yet.</p>
-      </div>
-      <div v-else class="quizzes-grid">
-        <div v-for="quiz in publicGames" :key="quiz.id" class="quiz-card public-quiz-card">
-          <h3>{{ quiz.name }}</h3>
-          <p class="quiz-author">by @{{ quiz.username }}</p>
-          <p class="quiz-date">{{ formatDate(quiz.created_at) }}</p>
-          <div class="quiz-actions">
-            <button @click="selectGamePublic(publicGames.findIndex(q => q.id === quiz.id))" class="play-btn">
-              ▶️ Play
-            </button>
-            <button @click="shareQuiz(quiz.id)" class="share-btn" title="Copy share link">
-              🔗 Share
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- ADMIN PANEL -->
     <AdminPanel
       v-if="showAdmin"
-      :token="token"
       :apiUrl="API_URL"
       @close="showAdmin = false"
       @gameSaved="onGameSaved"
@@ -498,11 +400,7 @@ function getScoreMessage() {
       </div>
     </div>
     <div
-      v-else-if="
-        photos &&
-        Array.isArray(photos) &&
-        photos.length > 0
-      "
+      v-else-if="photos && Array.isArray(photos) && photos.length > 0"
       class="score-summary"
     >
       <h2>🎉 Game finished!</h2>

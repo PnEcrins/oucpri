@@ -11,13 +11,13 @@
         @click="activeTab = tab"
         class="tab-button"
       >
-        {{ tab === 'create' ? '➕ Create New' : '📚 My Quizzes' }}
+        {{ tab === "create" ? "➕ Create New" : "📚 My Quizzes" }}
       </button>
     </div>
 
     <!-- Create New Quiz Section -->
     <div v-if="activeTab === 'create'" class="admin-form">
-      <h3>{{ editingQuizId ? '✏️ Edit Quiz' : '➕ Create a new quiz' }}</h3>
+      <h3>{{ editingQuizId ? "✏️ Edit Quiz" : "➕ Create a new quiz" }}</h3>
 
       <div class="form-group">
         <label for="quiz-name">Quiz Name *</label>
@@ -26,6 +26,18 @@
           v-model="formData.quizName"
           type="text"
           placeholder="e.g., France Cities, World Landmarks..."
+          class="quiz-name-input"
+          :disabled="isLoading"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="creator-name">Your Name *</label>
+        <input
+          id="creator-name"
+          v-model="formData.creatorName"
+          type="text"
+          placeholder="e.g., John, Marie..."
           class="quiz-name-input"
           :disabled="isLoading"
         />
@@ -66,7 +78,10 @@
           @update:coordinates="(coords) => onCoordinatesSelected(index, coords)"
         />
 
-        <div class="coordinates-display" v-if="photo.lat !== null && photo.lng !== null">
+        <div
+          class="coordinates-display"
+          v-if="photo.lat !== null && photo.lng !== null"
+        >
           📍 Coordinates: {{ photo.lat.toFixed(4) }}, {{ photo.lng.toFixed(4) }}
         </div>
       </div>
@@ -77,15 +92,36 @@
 
       <div class="form-actions">
         <button @click="saveGame" class="save-btn" :disabled="isLoading">
-          {{ isLoading ? 'Saving...' : (editingQuizId ? '💾 Update Quiz' : '💾 Create Quiz') }}
+          {{
+            isLoading
+              ? "Saving..."
+              : editingQuizId
+                ? "💾 Update Quiz"
+                : "💾 Create Quiz"
+          }}
         </button>
         <button @click="resetForm" class="reset-btn" :disabled="isLoading">
           Reset
         </button>
-        <button v-if="editingQuizId" @click="() => { editingQuizId = null; resetForm(); }" class="cancel-btn" :disabled="isLoading">
+        <button
+          v-if="editingQuizId"
+          @click="
+            () => {
+              editingQuizId = null;
+              resetForm();
+            }
+          "
+          class="cancel-btn"
+          :disabled="isLoading"
+        >
           Cancel Edit
         </button>
-        <button v-else @click="emit('close')" class="cancel-btn" :disabled="isLoading">
+        <button
+          v-else
+          @click="emit('close')"
+          class="cancel-btn"
+          :disabled="isLoading"
+        >
           Close
         </button>
       </div>
@@ -132,17 +168,14 @@ import { ref, reactive, onMounted, watch } from "vue";
 import AdminMap from "./AdminMap.vue";
 
 const props = defineProps({
-  token: String,
   apiUrl: String,
 });
 
 const emit = defineEmits(["close", "gameSaved"]);
 
 // Debug log props
-console.log('AdminPanel mounted with props:', {
-  hasToken: !!props.token,
-  tokenPreview: props.token ? props.token.substring(0, 20) + '...' : 'none',
-  apiUrl: props.apiUrl
+console.log("AdminPanel mounted with props:", {
+  apiUrl: props.apiUrl,
 });
 
 const activeTab = ref("create");
@@ -155,6 +188,7 @@ const editingQuizId = ref(null);
 
 const formData = reactive({
   quizName: "",
+  creatorName: "",
   photos: [
     { file: null, preview: "", lat: null, lng: null },
     { file: null, preview: "", lat: null, lng: null },
@@ -198,6 +232,7 @@ function onCoordinatesSelected(index, coords) {
 
 function resetForm() {
   formData.quizName = "";
+  formData.creatorName = "";
   formData.photos.forEach((p) => {
     p.file = null;
     p.preview = "";
@@ -214,6 +249,11 @@ async function saveGame() {
     return;
   }
 
+  if (!formData.creatorName.trim()) {
+    showMessage("Creator name required", "error");
+    return;
+  }
+
   const allValid = formData.photos.every(
     (p) => p.file && p.lat !== null && p.lng !== null,
   );
@@ -224,9 +264,12 @@ async function saveGame() {
   }
 
   // Additional validation: check that we have exactly 5 files
-  const filledPhotos = formData.photos.filter(p => p.file);
+  const filledPhotos = formData.photos.filter((p) => p.file);
   if (filledPhotos.length !== 5) {
-    showMessage(`You must upload exactly 5 images (current: ${filledPhotos.length})`, "error");
+    showMessage(
+      `You must upload exactly 5 images (current: ${filledPhotos.length})`,
+      "error",
+    );
     return;
   }
 
@@ -240,8 +283,9 @@ async function saveGame() {
 
     const formDataToSend = new FormData();
     formDataToSend.append("quizName", formData.quizName);
+    formDataToSend.append("creatorName", formData.creatorName);
     formDataToSend.append("gameData", JSON.stringify(gameData));
-    
+
     // Append images in order
     formData.photos.forEach((p, index) => {
       if (p.file) {
@@ -252,35 +296,37 @@ async function saveGame() {
 
     console.log("Sending quiz to API...", {
       quizName: formData.quizName,
+      creatorName: formData.creatorName,
       photoCount: filledPhotos.length,
       isEditing: editingQuizId.value,
-      apiUrl: props.apiUrl
+      apiUrl: props.apiUrl,
     });
 
     // Determine if we're creating or updating
     const isEditing = editingQuizId.value !== null;
-    const url = isEditing 
+    const url = isEditing
       ? `${props.apiUrl}/api/quizzes/${editingQuizId.value}`
       : `${props.apiUrl}/api/quizzes`;
     const method = isEditing ? "PUT" : "POST";
 
     const response = await fetch(url, {
       method: method,
-      headers: {
-        Authorization: `Bearer ${props.token}`,
-      },
       body: formDataToSend,
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || `Failed to save quiz (status: ${response.status})`);
+      throw new Error(
+        data.error || `Failed to save quiz (status: ${response.status})`,
+      );
     }
 
-    const successMsg = isEditing ? "Quiz updated successfully!" : "Quiz created successfully!";
+    const successMsg = isEditing
+      ? "Quiz updated successfully!"
+      : "Quiz created successfully!";
     showMessage(`✅ ${successMsg}`, "success");
-    
+
     // Reset edit mode
     editingQuizId.value = null;
     resetForm();
@@ -297,15 +343,11 @@ async function saveGame() {
 }
 
 async function loadMyQuizzes() {
-  console.log("Loading my quizzes...");
+  console.log("Loading quizzes...");
   isLoadingQuizzes.value = true;
   try {
     console.log("Fetching from:", `${props.apiUrl}/api/quizzes`);
-    const response = await fetch(`${props.apiUrl}/api/quizzes`, {
-      headers: {
-        Authorization: `Bearer ${props.token}`,
-      },
-    });
+    const response = await fetch(`${props.apiUrl}/api/quizzes`);
 
     console.log("Response status:", response.status);
 
@@ -316,7 +358,7 @@ async function loadMyQuizzes() {
     const data = await response.json();
     console.log("Loaded quizzes:", data);
     myQuizzes.value = data.quizzes || [];
-    console.log("My quizzes count:", myQuizzes.value.length);
+    console.log("Quizzes count:", myQuizzes.value.length);
   } catch (err) {
     console.error("Load quizzes error:", err);
     showMessage("Failed to load quizzes: " + err.message, "error");
@@ -332,9 +374,6 @@ async function deleteQuiz(quizId) {
   try {
     const response = await fetch(`${props.apiUrl}/api/quizzes/${quizId}`, {
       method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${props.token}`,
-      },
     });
 
     if (!response.ok) throw new Error("Failed to delete quiz");
@@ -354,14 +393,12 @@ async function editQuiz(quizId) {
   console.log("Editing quiz:", quizId);
   editingQuizId.value = quizId;
   isLoading.value = true;
-  
+
   try {
     // Load quiz photos
-    const response = await fetch(`${props.apiUrl}/api/quizzes/${quizId}/photos`, {
-      headers: {
-        Authorization: `Bearer ${props.token}`,
-      },
-    });
+    const response = await fetch(
+      `${props.apiUrl}/api/quizzes/${quizId}/photos`,
+    );
 
     if (!response.ok) {
       throw new Error("Failed to load quiz details");
@@ -370,9 +407,10 @@ async function editQuiz(quizId) {
     const data = await response.json();
     const photos = data.photos || [];
 
-    // Get quiz name
-    const quiz = myQuizzes.value.find(q => q.id === quizId);
+    // Get quiz name and creator
+    const quiz = myQuizzes.value.find((q) => q.id === quizId);
     formData.quizName = quiz ? quiz.name : "";
+    formData.creatorName = quiz ? quiz.creator_name : "";
 
     // Load existing photos into form
     photos.forEach((photo, index) => {
@@ -381,8 +419,8 @@ async function editQuiz(quizId) {
         formData.photos[index].lng = photo.location[1];
         formData.photos[index].file = null;
         // Construct full URL for the image
-        const imageUrl = photo.image.startsWith('http') 
-          ? photo.image 
+        const imageUrl = photo.image.startsWith("http")
+          ? photo.image
           : `${props.apiUrl}/${photo.image}`;
         formData.photos[index].preview = imageUrl;
         console.log(`Loaded photo ${index + 1}: ${imageUrl}`);
